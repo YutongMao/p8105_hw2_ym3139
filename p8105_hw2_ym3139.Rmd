@@ -167,3 +167,128 @@ gwyn_june2022_cigs
 After cleaning and merging the datasets, we ended up with a tidy data frame containing `r nrow(trash_all)` observations and `r ncol(trash_all)` variables. The dataset records information from different Trash Wheels and includes variables such as collection date, dumpster number, total weight of trash (in tons), and counts of items like plastic bottles, polystyrene, cigarette butts, glass bottles, plastic bags, wrappers, and sports balls. For example, the variable *weight* measures how many tons of trash were collected for each dumpster, while *cigarette* and *sports_balls* keep track of more specific items. Altogether, Professor Trash Wheel collected `r prof_total_weight_tons$total_weight_tons` tons of trash. Looking at a single case, Gwynnda removed `r gwyn_june2022_cigs$total_cigs` cigarette butts in June 2022. These results give us a concrete picture of how much waste is entering the harbor and also highlight the important role each Trash Wheel plays in improving the local environment.  
 
 
+# Problem 3
+
+```{r}
+library(readr)
+library(dplyr)
+library(janitor)
+library(tidyr)
+
+zip_file  <- "data/zillow_data/Zip Codes.csv"
+zori_file <- "data/zillow_data/Zip_zori_uc_sfrcondomfr_sm_month_NYC.csv"
+
+zip_raw  <- read_csv(zip_file,  show_col_types = FALSE) |> clean_names()
+zori_raw <- read_csv(zori_file, show_col_types = FALSE) |> clean_names()
+
+
+```
+
+```{r}
+glimpse(zip_raw)
+glimpse(zori_raw)
+```
+
+```{r}
+# ZIP–neighborhoods
+zip_codes <- zip_raw |>
+  transmute(
+    zip = sprintf("%05d", as.integer(zip_code)),
+    county = county,
+    borough = case_match(
+      county,
+      "New York" ~ "Manhattan",
+      "Kings"    ~ "Brooklyn",
+      "Queens"   ~ "Queens",
+      "Bronx"    ~ "Bronx",
+      "Richmond" ~ "Staten Island",
+      .default   = county
+    ),
+    neighborhood
+  )
+
+```
+
+```{r}
+# Zillow ZORI wide -> long
+zori_tidy <- zori_raw |>
+  rename(zip = region_name) |>
+  mutate(zip = sprintf("%05d", as.integer(zip))) |>
+  pivot_longer(
+    cols = starts_with("x20"),
+    names_to  = "date_str",
+    values_to = "rent"
+  ) |>
+  mutate(
+    month = as.Date(sub("^x", "", date_str), format = "%Y_%m_%d"),
+    month = as.Date(format(month, "%Y-%m-01"))
+  ) |>
+  select(zip, county_name, month, rent) |>
+  arrange(zip, month)
+```
+
+```{r}
+rent_merged <- zori_tidy |>
+  left_join(zip_codes, by = "zip") |>
+  relocate(zip, borough, neighborhood, county_name, month, rent)
+
+n_obs_total <- nrow(rent_merged)
+n_zip       <- n_distinct(rent_merged$zip)
+n_hood      <- n_distinct(rent_merged$neighborhood, na.rm = TRUE)
+
+zips_in_zip_only <- setdiff(zip_codes$zip, unique(zori_tidy$zip))
+zips_only_df <- tibble(zip = sort(zips_in_zip_only)) |>
+  left_join(select(zip_codes, zip, borough, neighborhood), by = "zip")
+
+jan2020 <- rent_merged |>
+  filter(month == as.Date("2020-01-01")) |>
+  select(zip, rent_2020 = rent)
+
+jan2021 <- rent_merged |>
+  filter(month == as.Date("2021-01-01")) |>
+  select(zip, rent_2021 = rent)
+
+drop_tbl <- rent_merged |>
+  distinct(zip, borough, neighborhood) |>
+  left_join(jan2020, by = "zip") |>
+  left_join(jan2021, by = "zip") |>
+  mutate(diff_2021_vs_2020 = rent_2021 - rent_2020) |>
+  arrange(diff_2021_vs_2020) |>
+  slice_head(n = 10)
+
+```
+
+```{r}
+zips_in_zip_only <- setdiff(zip_codes$zip, unique(zori_tidy$zip))
+
+zips_only_df <- tibble(
+  zip = sort(zips_in_zip_only)
+) |>
+  left_join(select(zip_codes, zip, borough, neighborhood), by = "zip")
+jan2020 <- rent_merged |>
+  filter(month == as.Date("2020-01-01")) |>
+  select(zip, rent_2020 = rent)
+
+jan2021 <- rent_merged |>
+  filter(month == as.Date("2021-01-01")) |>
+  select(zip, rent_2021 = rent)
+
+drop_tbl <- rent_merged |>
+  distinct(zip, borough, neighborhood) |>
+  left_join(jan2020, by = "zip") |>
+  left_join(jan2021, by = "zip") |>
+  mutate(diff_2021_vs_2020 = rent_2021 - rent_2020) |>
+  arrange(diff_2021_vs_2020) |>
+  slice_head(n = 10)
+```
+
+```{r}
+n_obs_total; n_zip; n_hood
+zips_only_df
+drop_tbl
+```
+
+After cleaning and merging the two datasets, the final tidy dataset contains `r n_obs_total` observations. In total, there are `r n_zip` unique ZIP codes and `r n_hood` distinct neighborhoods represented across New York City. Some ZIP codes present in the ZIP code reference file are not included in the Zillow rental dataset; for example, `r paste(head(zips_in_zip_only, 3), collapse = ", ")`. These omissions may be due to low population density, limited rental market activity, or a lack of sufficient listings in those areas.
+
+When comparing rental prices during the pandemic, we observe substantial declines. In particular, between January 2020 and January 2021, the ten ZIP codes with the steepest drops in rent are shown in Table X. Many of these are in Manhattan, reflecting broader out-migration and depressed rental demand during the peak of COVID-19 restrictions.
+

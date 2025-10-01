@@ -1,0 +1,11 @@
+---
+title: "P8105 HW2"
+author: 'Yutong Mao (UNI: ym3139)'
+date: "2025-10-01"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(tidyverse)  
+library(janitor)

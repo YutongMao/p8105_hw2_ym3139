@@ -99,3 +99,71 @@ The `unemployment` dataset provides monthly unemployment rates. After being resh
 When these three datasets are merged by `year` and `month`, the resulting data frame `merged` includes `r nrow(merged)` rows and `r ncol(merged)` columns. The time span goes from `r min(merged$year, na.rm = TRUE)` to `r max(merged$year, na.rm = TRUE)`. In the final version, the most important variables are the president’s party (`president`), the S&P closing value (`close`), and the unemployment rate (`unemployment_rate`).
 
 
+# Problem 2
+
+```{r}
+library(readxl)
+library(dplyr)
+library(janitor)
+
+trash_file <- "data/202409 Trash Wheel Collection Data.xlsx"
+```
+
+
+```{r}
+read_trashwheel_one <- function(sheet, wheel_label) {
+  df <- read_excel(trash_file, sheet = sheet, skip = 1) |>
+    clean_names() |>
+    filter(!is.na(dumpster))
+
+  if (!"sports_balls" %in% names(df) && "sports" %in% names(df)) df <- rename(df, sports_balls = sports)
+  if (!"cigarette" %in% names(df) && "cigarette_butts" %in% names(df)) df <- rename(df, cigarette = cigarette_butts)
+  if (!"weight" %in% names(df) && "weight_tons" %in% names(df)) df <- rename(df, weight = weight_tons)
+  if (!"volume" %in% names(df) && "volume_cubic_yards" %in% names(df)) df <- rename(df, volume = volume_cubic_yards)
+  if (!"plastic" %in% names(df) && "plastic_bottles" %in% names(df)) df <- rename(df, plastic = plastic_bottles)
+  if (!"glass" %in% names(df) && "glass_bottles" %in% names(df)) df <- rename(df, glass = glass_bottles)
+  if (!"wrapper" %in% names(df) && "wrappers" %in% names(df)) df <- rename(df, wrapper = wrappers)
+  if (!"homes" %in% names(df) && "homes_powered" %in% names(df)) df <- rename(df, homes = homes_powered)
+  if (!"sports_balls" %in% names(df)) df$sports_balls <- NA_real_
+
+  df |>
+    mutate(
+      date = suppressWarnings(as.Date(date)),
+      year = as.integer(year),
+      month = as.character(month),
+      sports_balls = as.integer(round(sports_balls)),
+      wheel = wheel_label
+    ) |>
+    select(any_of(c(
+      "wheel","dumpster","date","month","year","weight","volume",
+      "plastic","polystyrene","cigarette","glass","plastic_bags",
+      "wrapper","sports_balls","homes"
+    )))
+}
+```
+
+```{r}
+mr   <- read_trashwheel_one("Mr. Trash Wheel", "Mr. Trash Wheel")
+prof <- read_trashwheel_one("Professor Trash Wheel", "Professor Trash Wheel")
+gwyn <- read_trashwheel_one("Gwynnda Trash Wheel", "Gwynnda Trash Wheel")
+
+trash_all <- bind_rows(mr, prof, gwyn) |>
+  relocate(wheel, dumpster, date, month, year)
+```
+
+```{r}
+prof_total_weight_tons <- trash_all |>
+  filter(wheel == "Professor Trash Wheel") |>
+  summarise(total_weight_tons = sum(weight, na.rm = TRUE))
+
+gwyn_june2022_cigs <- trash_all |>
+  filter(wheel == "Gwynnda Trash Wheel", year == 2022, month == "June") |>
+  summarise(total_cigs = sum(cigarette, na.rm = TRUE))
+
+prof_total_weight_tons
+gwyn_june2022_cigs
+
+```
+After cleaning and merging the datasets, we ended up with a tidy data frame containing `r nrow(trash_all)` observations and `r ncol(trash_all)` variables. The dataset records information from different Trash Wheels and includes variables such as collection date, dumpster number, total weight of trash (in tons), and counts of items like plastic bottles, polystyrene, cigarette butts, glass bottles, plastic bags, wrappers, and sports balls. For example, the variable *weight* measures how many tons of trash were collected for each dumpster, while *cigarette* and *sports_balls* keep track of more specific items. Altogether, Professor Trash Wheel collected `r prof_total_weight_tons$total_weight_tons` tons of trash. Looking at a single case, Gwynnda removed `r gwyn_june2022_cigs$total_cigs` cigarette butts in June 2022. These results give us a concrete picture of how much waste is entering the harbor and also highlight the important role each Trash Wheel plays in improving the local environment.  
+
+

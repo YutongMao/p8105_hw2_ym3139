@@ -9,3 +9,93 @@ output: github_document
 knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 library(tidyverse)  
 library(janitor)
+```
+
+
+# Problem 1
+```{r}
+library(tidyverse)
+
+# --- Load data ---
+pols  <- readr::read_csv("data/fivethirtyeight_datasets/pols-month.csv")
+snp   <- readr::read_csv("data/fivethirtyeight_datasets/snp.csv")
+unemp <- readr::read_csv("data/fivethirtyeight_datasets/unemployment.csv")
+```
+
+```{r}
+pols_clean <- pols |>
+  tidyr::separate(
+    mon, into = c("year", "month_num", "day"),
+    sep = "-", convert = TRUE
+  ) |>
+  dplyr::mutate(
+    month = month.name[month_num],               
+    president = dplyr::case_when(               
+      prez_gop == 1 ~ "gop",
+      prez_dem == 1 ~ "dem",
+      TRUE ~ NA_character_
+    )
+  ) |>
+  dplyr::select(                                
+    year, month, president,
+    gov_gop, sen_gop, rep_gop,
+    gov_dem, sen_dem, rep_dem
+  ) |>
+  dplyr::arrange(year, match(month, month.name))
+
+dplyr::glimpse(pols_clean)
+
+```
+
+```{r}
+snp_clean <- snp |>
+  dplyr::mutate(
+    date = as.Date(date, tryFormats = c("%Y-%m-%d", "%m/%d/%Y"))
+  ) |>
+  dplyr::transmute(
+    year  = as.integer(format(date, "%Y")),
+    month_num = as.integer(format(date, "%m")),
+    month = month.name[month_num],
+    close
+  ) |>
+  dplyr::arrange(year, month_num) |>
+  dplyr::select(-month_num)
+
+dplyr::glimpse(snp_clean)
+```
+
+```{r}
+unemp_tidy <- unemp |>
+  dplyr::rename(year = Year) |>
+  tidyr::pivot_longer(
+    cols = -year, names_to = "month", values_to = "unemployment_rate"
+  ) |>
+  dplyr::mutate(
+    month = factor(month, levels = month.abb, labels = month.name),
+    month = as.character(month)
+  ) |>
+  dplyr::arrange(year, match(month, month.name))
+
+dplyr::glimpse(unemp_tidy)
+```
+
+```{r}
+pols_snp <- dplyr::left_join(pols_clean, snp_clean, by = c("year", "month"))
+merged   <- dplyr::left_join(pols_snp,  unemp_tidy, by = c("year", "month"))
+
+dplyr::glimpse(merged)
+dplyr::count(merged, year, sort = TRUE) |> head(3)
+
+```
+
+### About the datasets and the merged result
+
+The `pols-month` dataset tracks the monthly number of U.S. national politicians by party, together with the president’s affiliation. After cleaning, it contains `r nrow(pols_clean)` rows and `r ncol(pols_clean)` columns. Key variables are `year`, `month`, `president`, and the counts of governors, senators, and representatives from both parties (`gov_*`, `sen_*`, `rep_*`).
+
+The `snp` dataset gives monthly closing values of the S&P index. Once processed, it keeps only `year`, `month`, and `close`, with a total of `r nrow(snp_clean)` observations.
+
+The `unemployment` dataset provides monthly unemployment rates. After being reshaped into a long format, it has `r nrow(unemp_tidy)` rows. The main variables are `year`, `month`, and `unemployment_rate`.
+
+When these three datasets are merged by `year` and `month`, the resulting data frame `merged` includes `r nrow(merged)` rows and `r ncol(merged)` columns. The time span goes from `r min(merged$year, na.rm = TRUE)` to `r max(merged$year, na.rm = TRUE)`. In the final version, the most important variables are the president’s party (`president`), the S&P closing value (`close`), and the unemployment rate (`unemployment_rate`).
+
+
